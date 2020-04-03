@@ -168,6 +168,7 @@ module.exports = class latoken extends Exchange {
             const base = this.safeCurrencyCode (this.getCurrencyCode(baseId, currencies)); //Not sure about this
             const quote = this.safeCurrencyCode (this.getCurrencyCode(quoteId, currencies));
             const symbol = base + '/' + quote;
+            const active = (market.status == 'PAIR_STATUS_ACTIVE')? true : false
             const precision = {
                 'price': this.safeInteger (market, 'priceDecimals'),
                 'amount': this.safeInteger (market, 'quantityDecimals'),
@@ -195,23 +196,25 @@ module.exports = class latoken extends Exchange {
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
-                'active': undefined, // assuming true
+                'active': active, // assuming true
                 'precision': precision,
                 'limits': limits,
             });
         }
         return result;
     }
-    getCurrencyCode(currencyId, currencies){
+
+    getCurrencyCode (currencyId, currencies) {
         let code = undefined;
-        for(currency of currencies){
-            if(currency.id == currencyId){
+        for (currency of currencies) {
+            if (currency.id == currencyId) {
                 code = currency.tag
                 break;
             }
         }
         return code;
     }
+    
     async fetchCurrencies (params = {}) {
         const response = await this.publicGetExchangeInfoCurrencies (params);
         //
@@ -224,17 +227,30 @@ module.exports = class latoken extends Exchange {
         //             "type": "ERC20",
         //             "fee": 0.1
         //         }
+                // {
+
+                //     "id": "d663138b-3ec1-436c-9275-b3a161761523",
+                //     "status": "CURRENCY_STATUS_ACTIVE",
+                //     "type": "CURRENCY_TYPE_CRYPTO",
+                //     "name": "Latoken",
+                //     "tag": "LA",
+                //     "description": "LATOKEN is a cutting edge exchange which makes investing and payments easy and safe worldwide.",
+                //     "logo": "https://static.dev-mid.nekotal.tech/icons/color/la.svg",
+                //     "decimals": 9,
+                //     "created": 1571333563712
+
+                // }
         //     ]
         //
         const result = {};
         for (let i = 0; i < response.length; i++) {
             const currency = response[i];
-            const id = this.safeString (currency, 'symbol');
-            const numericId = this.safeInteger (currency, 'currencyId');
+            const id = this.safeString (currency, 'tag');
+            const numericId = undefined;
             const code = this.safeCurrencyCode (id);
-            const precision = this.safeInteger (currency, 'precission');
-            const fee = this.safeFloat (currency, 'fee');
-            const active = undefined;
+            const precision = this.safeInteger (currency, 'decimals');
+            const fee = undefined;
+            const active = (currency.status == "CURRENCY_STATUS_ACTIVE") ? true : false;
             result[code] = {
                 'id': id,
                 'numericId': numericId,
