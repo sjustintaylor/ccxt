@@ -51,7 +51,7 @@ module.exports = class latoken extends Exchange {
             'api': {
                 'public': {
                     'get': [
-                        'ExchangeInfo/time',
+                        'time',
                         'ExchangeInfo/limits',
                         'ExchangeInfo/pairs',
                         'ExchangeInfo/pairs/{currency}',
@@ -124,7 +124,7 @@ module.exports = class latoken extends Exchange {
     }
 
     async fetchTime (params = {}) {
-        const response = await this.publicGetExchangeInfoTime (params);
+        const response = await this.publicGetTime (params);
         //
         //     {
         //         "time": "2019-04-18T9:00:00.0Z",
@@ -132,7 +132,7 @@ module.exports = class latoken extends Exchange {
         //         "unixTimeMiliseconds": 1555578000000
         //     }
         //
-        return this.safeInteger (response, 'unixTimeMiliseconds');
+        return this.safeInteger (response, 'serverTime');
     }
 
     async fetchMarkets (params = {}) {
