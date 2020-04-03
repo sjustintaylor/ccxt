@@ -14,7 +14,7 @@ module.exports = class latoken extends Exchange {
             'id': 'latoken',
             'name': 'Latoken',
             'countries': [ 'KY' ], // Cayman Islands
-            'version': 'v1',
+            'version': 'v2',
             'rateLimit': 2000,
             'certified': false,
             'userAgent': this.userAgents['chrome'],
@@ -52,8 +52,9 @@ module.exports = class latoken extends Exchange {
                 'public': {
                     'get': [
                         'time',
+                        'pair',
+                        'currency/available',
                         'ExchangeInfo/limits',
-                        'ExchangeInfo/pairs',
                         'ExchangeInfo/pairs/{currency}',
                         'ExchangeInfo/pair',
                         'ExchangeInfo/currencies',
@@ -136,20 +137,24 @@ module.exports = class latoken extends Exchange {
     }
 
     async fetchMarkets (params = {}) {
-        const response = await this.publicGetExchangeInfoPairs (params);
+        const response = await this.publicGetPair (params);
+        const currencies = await this.publicGetCurrencyAvailable();
         //
         //     [
-        //         {
-        //             "pairId": 502,
-        //             "symbol": "LAETH",
-        //             "baseCurrency": "LA",
-        //             "quotedCurrency": "ETH",
-        //             "makerFee": 0.01,
-        //             "takerFee": 0.01,
-        //             "pricePrecision": 8,
-        //             "amountPrecision": 8,
-        //             "minQty": 0.1
-        //         }
+                // {
+
+                //     "id": "263d5e99-1413-47e4-9215-ce4f5dec3556",
+                //     "status": "PAIR_STATUS_ACTIVE",
+                //     "baseCurrency": "6ae140a9-8e75-4413-b157-8dd95c711b23",
+                //     "quoteCurrency": "23fa548b-f887-4f48-9b9b-7dd2c7de5ed0",
+                //     "priceTick": "0.010000000",
+                //     "priceDecimals": 2,
+                //     "quantityTick": "0.010000000",
+                //     "quantityDecimals": 2,
+                //     "costDisplayDecimals": 3,
+                //     "created": 1571333313871
+                
+                // }
         //     ]
         //
         const result = [];
@@ -159,21 +164,21 @@ module.exports = class latoken extends Exchange {
             // the exchange shows them inverted
             const baseId = this.safeString (market, 'baseCurrency');
             const quoteId = this.safeString (market, 'quotedCurrency');
-            const numericId = this.safeInteger (market, 'pairId');
-            const base = this.safeCurrencyCode (baseId);
-            const quote = this.safeCurrencyCode (quoteId);
+            const numericId = undefined;
+            const base = this.safeCurrencyCode (this.getCurrencyCode(baseId, currencies)); //Not sure about this
+            const quote = this.safeCurrencyCode (this.getCurrencyCode(quoteId, currencies));
             const symbol = base + '/' + quote;
             const precision = {
-                'price': this.safeInteger (market, 'pricePrecision'),
-                'amount': this.safeInteger (market, 'amountPrecision'),
+                'price': this.safeInteger (market, 'priceDecimals'),
+                'amount': this.safeInteger (market, 'quantityDecimals'),
             };
             const limits = {
                 'amount': {
-                    'min': this.safeFloat (market, 'minQty'),
+                    'min': this.safeFloat (market, 'quantityTick'),
                     'max': undefined,
                 },
                 'price': {
-                    'min': Math.pow (10, -precision['price']),
+                    'min': this.safeFloat(market, 'priceTick'),
                     'max': undefined,
                 },
                 'cost': {
@@ -197,7 +202,16 @@ module.exports = class latoken extends Exchange {
         }
         return result;
     }
-
+    getCurrencyCode(currencyId, currencies){
+        let code = undefined;
+        for(currency of currencies){
+            if(currency.id == currencyId){
+                code = currency.tag
+                break;
+            }
+        }
+        return code;
+    }
     async fetchCurrencies (params = {}) {
         const response = await this.publicGetExchangeInfoCurrencies (params);
         //
