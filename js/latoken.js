@@ -57,7 +57,6 @@ module.exports = class latoken extends Exchange {
                         'ExchangeInfo/limits',
                         'ExchangeInfo/pairs/{currency}',
                         'ExchangeInfo/pair',
-                        'ExchangeInfo/currencies',
                         'ExchangeInfo/currencies/{symbol}',
                         'MarketData/tickers',
                         'MarketData/ticker/{symbol}',
@@ -138,23 +137,21 @@ module.exports = class latoken extends Exchange {
 
     async fetchMarkets (params = {}) {
         const response = await this.publicGetPair (params);
-        const currencies = await this.publicGetCurrencyAvailable();
+        const currencies = await this.publicGetCurrencyAvailable ();
         //
         //     [
-                // {
-
-                //     "id": "263d5e99-1413-47e4-9215-ce4f5dec3556",
-                //     "status": "PAIR_STATUS_ACTIVE",
-                //     "baseCurrency": "6ae140a9-8e75-4413-b157-8dd95c711b23",
-                //     "quoteCurrency": "23fa548b-f887-4f48-9b9b-7dd2c7de5ed0",
-                //     "priceTick": "0.010000000",
-                //     "priceDecimals": 2,
-                //     "quantityTick": "0.010000000",
-                //     "quantityDecimals": 2,
-                //     "costDisplayDecimals": 3,
-                //     "created": 1571333313871
-                
-                // }
+        //      {
+        //          "id": "263d5e99-1413-47e4-9215-ce4f5dec3556",
+        //          "status": "PAIR_STATUS_ACTIVE",
+        //          "baseCurrency": "6ae140a9-8e75-4413-b157-8dd95c711b23",
+        //          "quoteCurrency": "23fa548b-f887-4f48-9b9b-7dd2c7de5ed0",
+        //          "priceTick": "0.010000000",
+        //          "priceDecimals": 2,
+        //          "quantityTick": "0.010000000",
+        //          "quantityDecimals": 2,
+        //          "costDisplayDecimals": 3,
+        //          "created": 1571333313871
+        //      }
         //     ]
         //
         const result = [];
@@ -165,10 +162,10 @@ module.exports = class latoken extends Exchange {
             const baseId = this.safeString (market, 'baseCurrency');
             const quoteId = this.safeString (market, 'quotedCurrency');
             const numericId = undefined;
-            const base = this.safeCurrencyCode (this.getCurrencyCode(baseId, currencies)); //Not sure about this
-            const quote = this.safeCurrencyCode (this.getCurrencyCode(quoteId, currencies));
+            const base = this.safeCurrencyCode (this.getCurrencyCode (baseId, currencies)); // Not sure about this
+            const quote = this.safeCurrencyCode (this.getCurrencyCode (quoteId, currencies));
             const symbol = base + '/' + quote;
-            const active = (market.status == 'PAIR_STATUS_ACTIVE')? true : false
+            const active = (market.status === 'PAIR_STATUS_ACTIVE') ? true : false;
             const precision = {
                 'price': this.safeInteger (market, 'priceDecimals'),
                 'amount': this.safeInteger (market, 'quantityDecimals'),
@@ -179,7 +176,7 @@ module.exports = class latoken extends Exchange {
                     'max': undefined,
                 },
                 'price': {
-                    'min': this.safeFloat(market, 'priceTick'),
+                    'min': this.safeFloat (market, 'priceTick'),
                     'max': undefined,
                 },
                 'cost': {
@@ -206,40 +203,30 @@ module.exports = class latoken extends Exchange {
 
     getCurrencyCode (currencyId, currencies) {
         let code = undefined;
-        for (currency of currencies) {
-            if (currency.id == currencyId) {
-                code = currency.tag
+        for (let i = 0; i < currencies.length; i++) {
+            if (currencies[i].id === currencyId) {
+                code = currencies[i].tag;
                 break;
             }
         }
         return code;
     }
-    
+
     async fetchCurrencies (params = {}) {
-        const response = await this.publicGetExchangeInfoCurrencies (params);
+        const response = await publicGetCurrencyAvailable (params);
         //
         //     [
         //         {
-        //             "currencyId": 102,
-        //             "symbol": "LA",
+        //             "id": "d663138b-3ec1-436c-9275-b3a161761523",
+        //             "status": "CURRENCY_STATUS_ACTIVE",
+        //             "type": "CURRENCY_TYPE_CRYPTO",
         //             "name": "Latoken",
-        //             "precission": 8,
-        //             "type": "ERC20",
-        //             "fee": 0.1
+        //             "tag": "LA",
+        //             "description": "LATOKEN is a cutting edge exchange which makes investing and payments easy and safe worldwide.",
+        //             "logo": "https://static.dev-mid.nekotal.tech/icons/color/la.svg",
+        //             "decimals": 9,
+        //             "created": 1571333563712
         //         }
-                // {
-
-                //     "id": "d663138b-3ec1-436c-9275-b3a161761523",
-                //     "status": "CURRENCY_STATUS_ACTIVE",
-                //     "type": "CURRENCY_TYPE_CRYPTO",
-                //     "name": "Latoken",
-                //     "tag": "LA",
-                //     "description": "LATOKEN is a cutting edge exchange which makes investing and payments easy and safe worldwide.",
-                //     "logo": "https://static.dev-mid.nekotal.tech/icons/color/la.svg",
-                //     "decimals": 9,
-                //     "created": 1571333563712
-
-                // }
         //     ]
         //
         const result = {};
@@ -250,7 +237,7 @@ module.exports = class latoken extends Exchange {
             const code = this.safeCurrencyCode (id);
             const precision = this.safeInteger (currency, 'decimals');
             const fee = undefined;
-            const active = (currency.status == "CURRENCY_STATUS_ACTIVE") ? true : false;
+            const active = (currency.status === 'CURRENCY_STATUS_ACTIVE') ? true : false;
             result[code] = {
                 'id': id,
                 'numericId': numericId,
