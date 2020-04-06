@@ -452,23 +452,19 @@ module.exports = class latoken extends Exchange {
         await this.loadMarkets ();
         const response = await this.publicGetMarketOverviewTicker (params);
         //
-        //     [
-        //      {
-        //          "symbol": "ETH/USDT",
-        //          "baseCurrency": "23fa548b-f887-4f48-9b9b-7dd2c7de5ed0",
-        //          "quoteCurrency": "d721fcf2-cf87-4626-916a-da50548fe5b3",
-        //          "volume24h": "450.29",
-        //          "volume7d": "3410.23",
-        //          "change24h": "-5.2100",
-        //          "change7d": "1.1491",
-        //          "lastPrice": "10034.14"
+        //  {
+        //      "BTC_USDT": {
+        //          "base_id": "1",
+        //          "quote_id": "825",
+        //          "last_price": "10000",
+        //          "quote_volume": "20000",
+        //          "base_volume": "2"
         //      }
-        //     ]
+        //  }
         //
         const result = {};
-        for (let i = 0; i < response.length; i++) {
-            const tickerSymbol = this.safeString (response[i], 'symbol').replace ('/', '_');
-            const ticker = await this.fetchTicker (tickerSymbol);
+        for (const key of response) {
+            const ticker = await this.fetchTicker (key);
             const symbol = ticker['symbol'];
             if (symbols === undefined || this.inArray (symbol, symbols)) {
                 result[symbol] = ticker;
