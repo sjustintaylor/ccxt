@@ -54,21 +54,21 @@ module.exports = class latoken extends Exchange {
                         'time',
                         'pair',
                         'currency/available',
+                        'marketOverview/orderbook/{market_pair}',
+                        'ticker/{base}/{quote}',
+                        'marketOverview/ticker',
                         'ExchangeInfo/limits',
                         'ExchangeInfo/pairs/{currency}',
                         'ExchangeInfo/pair',
                         'ExchangeInfo/currencies/{symbol}',
-                        'MarketData/tickers',
-                        'MarketData/ticker/{symbol}',
                         'MarketData/orderBook/{symbol}',
-                        'MarketData/orderBook/{symbol}/{limit}',
                         'MarketData/trades/{symbol}',
                         'MarketData/trades/{symbol}/{limit}',
                     ],
                 },
                 'private': {
                     'get': [
-                        'Account/balances',
+                        'auth/account',
                         'Account/balances/{currency}',
                         'Order/status',
                         'Order/active',
@@ -137,7 +137,6 @@ module.exports = class latoken extends Exchange {
 
     async fetchMarkets (params = {}) {
         const response = await this.publicGetPair (params);
-        const currencies = await this.publicGetCurrencyAvailable ();
         //
         //     [
         //      {
@@ -157,14 +156,16 @@ module.exports = class latoken extends Exchange {
         const result = [];
         for (let i = 0; i < response.length; i++) {
             const market = response[i];
-            const id = this.safeString (market, 'symbol');
             // the exchange shows them inverted
             const baseId = this.safeString (market, 'baseCurrency');
             const quoteId = this.safeString (market, 'quotedCurrency');
+            const baseCode = await this.getCurrencyCode (baseId);
+            const quoteCode = await this.getCurrencyCode (quoteId);
             const numericId = undefined;
-            const base = this.safeCurrencyCode (this.getCurrencyCode (baseId, currencies)); // Not sure about this
-            const quote = this.safeCurrencyCode (this.getCurrencyCode (quoteId, currencies));
+            const base = this.safeCurrencyCode (baseCode); // Not sure about this
+            const quote = this.safeCurrencyCode (quoteCode);
             const symbol = base + '/' + quote;
+            const id = base + '_' + quote;
             const active = (market.status === 'PAIR_STATUS_ACTIVE') ? true : false;
             const precision = {
                 'price': this.safeInteger (market, 'priceDecimals'),
@@ -185,7 +186,7 @@ module.exports = class latoken extends Exchange {
                 },
             };
             result.push ({
-                'id': id,
+                'id': id.toUpperCase (),
                 'numericId': numericId,
                 'info': market,
                 'symbol': symbol,
@@ -201,8 +202,9 @@ module.exports = class latoken extends Exchange {
         return result;
     }
 
-    getCurrencyCode (currencyId, currencies) {
+    async getCurrencyCode (currencyId) {
         let code = undefined;
+        const currencies = await this.publicGetCurrencyAvailable ();
         for (let i = 0; i < currencies.length; i++) {
             if (currencies[i].id === currencyId) {
                 code = currencies[i].tag;
@@ -213,7 +215,7 @@ module.exports = class latoken extends Exchange {
     }
 
     async fetchCurrencies (params = {}) {
-        const response = await publicGetCurrencyAvailable (params);
+        const response = await this.publicGetCurrencyAvailable (params);
         //
         //     [
         //         {
@@ -293,18 +295,18 @@ module.exports = class latoken extends Exchange {
 
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
-        const response = await this.privateGetAccountBalances (params);
+        const response = await this.privateGetAuthAccount (params);
         //
         //     [
-        //         {
-        //             "currencyId": 102,
-        //             "symbol": "LA",
-        //             "name": "Latoken",
-        //             "amount": 1054.66,
-        //             "available": 900.66,
-        //             "frozen": 154,
-        //             "pending": 0
-        //         }
+        //       {
+        //          "id": "1e200836-a037-4475-825e-f202dd0b0e92",
+        //          "status": "ACCOUNT_STATUS_ACTIVE",
+        //          "type": "ACCOUNT_TYPE_WALLET",
+        //          "timestamp": 1566408522980,
+        //          "currency": "6ae140a9-8e75-4413-b157-8dd95c711b23",
+        //          "available": "898849.3300",
+        //          "blocked": "4581.9510"
+        //      }
         //     ]
         //
         const result = {
@@ -312,15 +314,15 @@ module.exports = class latoken extends Exchange {
         };
         for (let i = 0; i < response.length; i++) {
             const balance = response[i];
-            const currencyId = this.safeString (balance, 'symbol');
-            const code = this.safeCurrencyCode (currencyId);
-            const frozen = this.safeFloat (balance, 'frozen');
-            const pending = this.safeFloat (balance, 'pending');
-            const used = this.sum (frozen, pending);
+            const currency = this.safeString (balance, 'currency');
+            const currencyCode = await this.getCurrencyCode (currency);
+            const code = this.safeCurrencyCode (currencyCode);
+            const free = this.safeFloat (balance, 'available');
+            const blocked = this.safeFloat (balance, 'blocked');
             const account = {
-                'free': this.safeFloat (balance, 'available'),
-                'used': used,
-                'total': this.safeFloat (balance, 'amount'),
+                'free': free,
+                'used': blocked,
+                'total': this.sum (free, blocked),
             };
             result[code] = account;
         }
@@ -331,64 +333,79 @@ module.exports = class latoken extends Exchange {
         await this.loadMarkets ();
         const market = this.market (symbol);
         const request = {
-            'symbol': market['id'],
-            'limit': 10,
+            'market_pair': market['id'],
+            'depth': 10,
         };
         if (limit !== undefined) {
-            request['limit'] = limit; // default 10, max 100
+            request['depth'] = limit; // default 10, max 500
         }
-        const response = await this.publicGetMarketDataOrderBookSymbolLimit (this.extend (request, params));
+        const response = await this.publicGetMarketOverviewOrderbookMarketPair (this.extend (request, params));
         //
-        //     {
-        //         "pairId": 502,
-        //         "symbol": "LAETH",
-        //         "spread": 0.07,
-        //         "asks": [
-        //             { "price": 136.3, "quantity": 7.024 }
-        //         ],
-        //         "bids": [
-        //             { "price": 136.2, "quantity": 6.554 }
-        //         ]
-        //     }
+        // {
+        //   "bids":
+        //      [
+        //          [
+        //          "12462000",
+        //          "0.04548320"
+        //          ],
+        //          []
+        //     ],
+        //   "asks":
+        //      [
+        //          [],
+        //          []
+        //      ],
+        //     "timestamp": "1566359163123"
+        // }
         //
-        return this.parseOrderBook (response, undefined, 'bids', 'asks', 'price', 'quantity');
+        const timestamp = this.safeString (response, 'timestamp');
+        const bids = [];
+        const asks = [];
+        for (let i = 0; i < response['bids'].length; i++) {
+            bids.push ({ 'price': response['bids'][i][0], 'quantity': response['bids'][i][1] });
+        }
+        for (let i = 0; i < response['asks'].length; i++) {
+            asks.push ({ 'price': response['asks'][i][0], 'quantity': response['asks'][i][1] });
+        }
+        const newResponse = {
+            bids,
+            asks,
+            timestamp,
+        };
+        return this.parseOrderBook (newResponse, timestamp, 'bids', 'asks', 'price', 'quantity');
     }
 
     parseTicker (ticker, market = undefined) {
-        //
-        //     {
-        //         "pairId":"63b41092-f3f6-4ea4-9e7c-4525ed250dad",
-        //         "symbol":"ETHBTC",
-        //         "volume":11317.037494474000000000,
-        //         "open":0.020033000000000000,
-        //         "low":0.019791000000000000,
-        //         "high":0.020375000000000000,
-        //         "close":0.019923000000000000,
-        //         "priceChange":-0.1500
-        //     }
+        //      {
+        //          "symbol": "ETH/USDT",
+        //          "baseCurrency": "23fa548b-f887-4f48-9b9b-7dd2c7de5ed0",
+        //          "quoteCurrency": "d721fcf2-cf87-4626-916a-da50548fe5b3",
+        //          "volume24h": "450.29",
+        //          "volume7d": "3410.23",
+        //          "change24h": "-5.2100",
+        //          "change7d": "1.1491",
+        //          "lastPrice": "10034.14"
+        //      }
         //
         let symbol = undefined;
-        const marketId = this.safeString (ticker, 'symbol');
+        const marketId = this.safeString (ticker, 'symbol').replace ('/', '_');
         if (marketId in this.markets_by_id) {
             market = this.markets_by_id[marketId];
         }
         if ((symbol === undefined) && (market !== undefined)) {
             symbol = market['symbol'];
         }
-        const open = this.safeFloat (ticker, 'open');
-        const close = this.safeFloat (ticker, 'close');
-        let change = undefined;
-        if (open !== undefined && close !== undefined) {
-            change = close - open;
-        }
-        const percentage = this.safeFloat (ticker, 'priceChange');
+        const close = this.safeFloat (ticker, 'lastPrice');
+        const change = close + (close * this.safeFloat (ticker, 'change24h'));
+        const open = close - change;
+        const percentage = this.safeFloat (ticker, 'change24h');
         const timestamp = this.nonce ();
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'low': this.safeFloat (ticker, 'low'),
-            'high': this.safeFloat (ticker, 'high'),
+            'low': undefined,
+            'high': undefined,
             'bid': undefined,
             'bidVolume': undefined,
             'ask': undefined,
@@ -402,7 +419,7 @@ module.exports = class latoken extends Exchange {
             'percentage': percentage,
             'average': undefined,
             'baseVolume': undefined,
-            'quoteVolume': this.safeFloat (ticker, 'volume'),
+            'quoteVolume': this.safeFloat (ticker, 'volume24h'),
             'info': ticker,
         };
     }
@@ -410,45 +427,48 @@ module.exports = class latoken extends Exchange {
     async fetchTicker (symbol, params = {}) {
         await this.loadMarkets ();
         const market = this.market (symbol);
+        const id = market['id'].split ('_');
         const request = {
-            'symbol': market['id'],
+            'base': id[0],
+            'quote': id[1],
         };
-        const response = await this.publicGetMarketDataTickerSymbol (this.extend (request, params));
+        const response = await this.publicGetTickerBaseQuote (this.extend (request, params));
         //
-        //     {
-        //         "pairId": 502,
-        //         "symbol": "LAETH",
-        //         "volume": 1023314.3202,
-        //         "open": 134.82,
-        //         "low": 133.95,
-        //         "high": 136.22,
-        //         "close": 135.12,
-        //         "priceChange": 0.22
-        //     }
+        //      {
+        //          "symbol": "ETH/USDT",
+        //          "baseCurrency": "23fa548b-f887-4f48-9b9b-7dd2c7de5ed0",
+        //          "quoteCurrency": "d721fcf2-cf87-4626-916a-da50548fe5b3",
+        //          "volume24h": "450.29",
+        //          "volume7d": "3410.23",
+        //          "change24h": "-5.2100",
+        //          "change7d": "1.1491",
+        //          "lastPrice": "10034.14"
+        //      }
         //
         return this.parseTicker (response, market);
     }
 
     async fetchTickers (symbols = undefined, params = {}) {
         await this.loadMarkets ();
-        const response = await this.publicGetMarketDataTickers (params);
+        const response = await this.publicGetMarketOverviewTicker (params);
         //
         //     [
-        //         {
-        //             "pairId": 502,
-        //             "symbol": "LAETH",
-        //             "volume": 1023314.3202,
-        //             "open": 134.82,
-        //             "low": 133.95,
-        //             "high": 136.22,
-        //             "close": 135.12,
-        //             "priceChange": 0.22
-        //         }
+        //      {
+        //          "symbol": "ETH/USDT",
+        //          "baseCurrency": "23fa548b-f887-4f48-9b9b-7dd2c7de5ed0",
+        //          "quoteCurrency": "d721fcf2-cf87-4626-916a-da50548fe5b3",
+        //          "volume24h": "450.29",
+        //          "volume7d": "3410.23",
+        //          "change24h": "-5.2100",
+        //          "change7d": "1.1491",
+        //          "lastPrice": "10034.14"
+        //      }
         //     ]
         //
         const result = {};
         for (let i = 0; i < response.length; i++) {
-            const ticker = this.parseTicker (response[i]);
+            const tickerSymbol = this.safeString (response[i], 'symbol').replace ('/', '_');
+            const ticker = await this.fetchTicker (tickerSymbol);
             const symbol = ticker['symbol'];
             if (symbols === undefined || this.inArray (symbol, symbols)) {
                 result[symbol] = ticker;
