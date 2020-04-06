@@ -57,12 +57,12 @@ module.exports = class latoken extends Exchange {
                         'marketOverview/orderbook/{market_pair}',
                         'ticker/{base}/{quote}',
                         'marketOverview/ticker',
+                        'trade/history/{currency}/{quote}',
                         'ExchangeInfo/limits',
                         'ExchangeInfo/pairs/{currency}',
                         'ExchangeInfo/pair',
                         'ExchangeInfo/currencies/{symbol}',
                         'MarketData/orderBook/{symbol}',
-                        'MarketData/trades/{symbol}',
                         'MarketData/trades/{symbol}/{limit}',
                     ],
                 },
@@ -73,7 +73,7 @@ module.exports = class latoken extends Exchange {
                         'Order/status',
                         'Order/active',
                         'Order/get_order',
-                        'Order/trades',
+                        'auth/trade/pair/{currency}/{quote}',
                     ],
                     'post': [
                         'Order/new',
@@ -463,8 +463,9 @@ module.exports = class latoken extends Exchange {
         //  }
         //
         const result = {};
-        for (const key of response) {
-            const ticker = await this.fetchTicker (key);
+        const keys = Object.keys (response);
+        for (let i = 0; i < keys.length; i++) {
+            const ticker = await this.fetchTicker (keys[i]);
             const symbol = ticker['symbol'];
             if (symbols === undefined || this.inArray (symbol, symbols)) {
                 result[symbol] = ticker;
@@ -477,12 +478,18 @@ module.exports = class latoken extends Exchange {
         //
         // fetchTrades (public)
         //
-        //     {
-        //         side: 'buy',
-        //         price: 0.33634,
-        //         amount: 0.01,
-        //         timestamp: 1564240008000 // milliseconds
-        //     }
+        //     [
+        //      {
+        //          "id": "92609cf4-fca5-43ed-b0ea-b40fb48d3b0d",
+        //          "direction": "TRADE_DIRECTION_BUY",
+        //          "baseCurrency": "6ae140a9-8e75-4413-b157-8dd95c711b23",
+        //          "quoteCurrency": "d721fcf2-cf87-4626-916a-da50548fe5b3",
+        //          "price": "10000.00",
+        //          "quantity": "18.0000",
+        //          "cost": "180000.000",
+        //          "timestamp": 1568396094704,
+        //      }
+        //     ]
         //
         // fetchMyTrades (private)
         //
@@ -548,29 +555,28 @@ module.exports = class latoken extends Exchange {
         await this.loadMarkets ();
         const market = this.market (symbol);
         const request = {
-            'symbol': market['id'],
+            'currency': market['base'],
+            'quote': market['quote'],
         };
         if (limit !== undefined) {
             request['limit'] = limit; // default 50, max 100
         }
-        const response = await this.publicGetMarketDataTradesSymbol (this.extend (request, params));
+        const response = await this.publicGetTradeHistoryCurrencyQuote (this.extend (request, params));
         //
-        //     {
-        //         "pairId":370,
-        //         "symbol":"ETHBTC",
-        //         "tradeCount":51,
-        //         "trades": [
-        //             {
-        //                 side: 'buy',
-        //                 price: 0.33634,
-        //                 amount: 0.01,
-        //                 timestamp: 1564240008000 // milliseconds
-        //             }
-        //         ]
-        //     }
+        //     [
+        //      {
+        //          "id": "92609cf4-fca5-43ed-b0ea-b40fb48d3b0d",
+        //          "direction": "TRADE_DIRECTION_BUY",
+        //          "baseCurrency": "6ae140a9-8e75-4413-b157-8dd95c711b23",
+        //          "quoteCurrency": "d721fcf2-cf87-4626-916a-da50548fe5b3",
+        //          "price": "10000.00",
+        //          "quantity": "18.0000",
+        //          "cost": "180000.000",
+        //          "timestamp": 1568396094704
+        //      }
+        //     ]
         //
-        const trades = this.safeValue (response, 'trades', []);
-        return this.parseTrades (trades, market, since, limit);
+        return this.parseTrades (response, market, since, limit);
     }
 
     async fetchMyTrades (symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -580,29 +586,25 @@ module.exports = class latoken extends Exchange {
         await this.loadMarkets ();
         const market = this.market (symbol);
         const request = {
-            'symbol': market['id'],
+            'currency': market['base'],
+            'quote': market['quote'],
         };
-        const response = await this.privateGetOrderTrades (this.extend (request, params));
+        const response = await this.privateGetAuthTradePair (this.extend (request, params));
         //
-        //     {
-        //         "pairId": 502,
-        //         "symbol": "LAETH",
-        //         "tradeCount": 1,
-        //         "trades": [
-        //             {
-        //                 id: '1564223032.892829.3.tg15',
-        //                 orderId: '1564223032.671436.707548@1379:1',
-        //                 commission: 0,
-        //                 side: 'buy',
-        //                 price: 0.32874,
-        //                 amount: 0.607,
-        //                 timestamp: 1564223033 // seconds
-        //             }
-        //         ]
-        //     }
+        //     [
+        //      {
+        //          "id": "92609cf4-fca5-43ed-b0ea-b40fb48d3b0d",
+        //          "direction": "TRADE_DIRECTION_BUY",
+        //          "baseCurrency": "6ae140a9-8e75-4413-b157-8dd95c711b23",
+        //          "quoteCurrency": "d721fcf2-cf87-4626-916a-da50548fe5b3",
+        //          "price": "10000.00",
+        //          "quantity": "18.0000",
+        //          "cost": "180000.000",
+        //          "timestamp": 1568396094704
+        //      }
+        //     ]
         //
-        const trades = this.safeValue (response, 'trades', []);
-        return this.parseTrades (trades, market, since, limit);
+        return this.parseTrades (response, market, since, limit);
     }
 
     parseOrderStatus (status) {
