@@ -135,6 +135,7 @@ module.exports = class latoken extends Exchange {
 
     async fetchMarkets (params = {}) {
         const response = await this.publicGetPair (params);
+        const currencies = await this.publicGetCurrencyAvailable ();
         //
         //     [
         //      {
@@ -157,8 +158,8 @@ module.exports = class latoken extends Exchange {
             // the exchange shows them inverted
             const baseId = this.safeString (market, 'baseCurrency');
             const quoteId = this.safeString (market, 'quotedCurrency');
-            const baseCode = await this.getCurrencyCode (baseId);
-            const quoteCode = await this.getCurrencyCode (quoteId);
+            const baseCode = this.getCurrencyCode (baseId, currencies);
+            const quoteCode = this.getCurrencyCode (quoteId, currencies);
             const numericId = undefined;
             const base = this.safeCurrencyCode (baseCode); // Not sure about this
             const quote = this.safeCurrencyCode (quoteCode);
@@ -200,9 +201,8 @@ module.exports = class latoken extends Exchange {
         return result;
     }
 
-    async getCurrencyCode (currencyId) {
+    getCurrencyCode (currencyId, currencies) {
         let code = undefined;
-        const currencies = await this.publicGetCurrencyAvailable ();
         for (let i = 0; i < currencies.length; i++) {
             if (currencies[i].id === currencyId) {
                 code = currencies[i].tag;
