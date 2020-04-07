@@ -54,6 +54,7 @@ module.exports = class latoken extends Exchange {
                         'time',
                         'pair',
                         'currency/available',
+                        'currency',
                         'marketOverview/orderbook/{market_pair}',
                         'ticker/{base}/{quote}',
                         'marketOverview/ticker',
@@ -135,7 +136,7 @@ module.exports = class latoken extends Exchange {
 
     async fetchMarkets (params = {}) {
         const response = await this.publicGetPair (params);
-        const currencies = await this.publicGetCurrencyAvailable ();
+        const currencies = await this.publicGetCurrency ();
         //
         //     [
         //      {
@@ -157,7 +158,7 @@ module.exports = class latoken extends Exchange {
             const market = response[i];
             // the exchange shows them inverted
             const baseId = this.safeString (market, 'baseCurrency');
-            const quoteId = this.safeString (market, 'quotedCurrency');
+            const quoteId = this.safeString (market, 'quoteCurrency');
             const baseCode = this.getCurrencyCode (baseId, currencies);
             const quoteCode = this.getCurrencyCode (quoteId, currencies);
             const numericId = undefined;
@@ -204,8 +205,8 @@ module.exports = class latoken extends Exchange {
     getCurrencyCode (currencyId, currencies) {
         let code = undefined;
         for (let i = 0; i < currencies.length; i++) {
-            if (currencies[i].id === currencyId) {
-                code = currencies[i].tag;
+            if (currencies[i]['id'] === currencyId) {
+                code = currencies[i]['tag'];
                 break;
             }
         }
@@ -294,6 +295,7 @@ module.exports = class latoken extends Exchange {
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
         const response = await this.privateGetAuthAccount (params);
+        const allCurrencies = await this.publicGetCurrencyAvailable ();
         //
         //     [
         //       {
@@ -313,7 +315,7 @@ module.exports = class latoken extends Exchange {
         for (let i = 0; i < response.length; i++) {
             const balance = response[i];
             const currency = this.safeString (balance, 'currency');
-            const currencyCode = await this.getCurrencyCode (currency);
+            const currencyCode = this.getCurrencyCode (currency, allCurrencies);
             const code = this.safeCurrencyCode (currencyCode);
             const free = this.safeFloat (balance, 'available');
             const blocked = this.safeFloat (balance, 'blocked');
@@ -970,23 +972,21 @@ module.exports = class latoken extends Exchange {
     }
 
     sign (path, api = 'public', method = 'GET', params = undefined, headers = undefined, body = undefined) {
-        let request = '/api/' + this.version + '/' + this.implodeParams (path, params);
+        let request = '/' + this.version + '/' + this.implodeParams (path, params);
         let query = this.omit (params, this.extractParams (path));
         if (api === 'private') {
-            const nonce = this.nonce ();
-            query = this.extend ({
-                'timestamp': nonce,
-            }, query);
+            query = query;
         }
+        const requestHash = '/' + this.version + '/' + this.implodeParams (path, params);
         const urlencodedQuery = this.urlencode (query);
         if (Object.keys (query).length) {
             request += '?' + urlencodedQuery;
         }
         if (api === 'private') {
             this.checkRequiredCredentials ();
-            const signature = this.hmac (this.encode (request), this.encode (this.secret));
+            const signature = this.hmac (this.encode (method+requestHash+urlencodedQuery), this.encode (this.secret), 'sha256', 'hex');
             headers = {
-                'X-LA-KEY': this.apiKey,
+                'X-LA-APIKEY': this.apiKey,
                 'X-LA-SIGNATURE': signature,
             };
             if (method === 'POST') {
