@@ -694,7 +694,37 @@ module.exports = class latoken extends Exchange {
     }
 
     async fetchOpenOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
-        return this.fetchOrdersWithMethod ('private_get_auth_order_pair_currency_quote_active', symbol, since, limit, params);
+        if (symbol === undefined) {
+            throw new ArgumentsRequired (this.id + ' fetchOrdersWithMethod requires a symbol argument');
+        }
+        await this.loadMarkets ();
+        const market = this.market (symbol);
+        const request = {
+            'currency': market['baseId'],
+            'quote': market['quoteId'],
+        };
+        const response = await this.privateGetAuthOrderPairCurrencyQuoteActive (this.extends (request, params));
+        //
+        // [{
+        //     "id": "92609cf4-fca5-43ed-b0ea-b40fb48d3b0d",
+        //     "status": "PLACED",
+        //     "side": "SELL",
+        //     "condition": "GTC",
+        //     "type": "LIMIT",
+        //     "baseCurrency": "3092b810-c39f-47ba-8c5f-a8ca3bd8902c",
+        //     "quoteCurrency": "4092b810-c39f-47ba-8c5f-a8ca3bd0004c",
+        //     "clientOrderId": "myOrder",
+        //     "price": "130.12",
+        //     "quantity": "1000.0",
+        //     "cost": "130120.00",
+        //     "filled": "999.1",
+        //     "trader": "12345678-fca5-43ed-b0ea-b40fb48d3b0d",
+        //     "timestamp": 3800012333
+        // }]
+        //
+        const marketId = market['base'] + '_' + market['quote'];
+        response['marketId'] = marketId;
+        return this.parseOrders (response, market, since, limit);
     }
 
     async fetchClosedOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -907,6 +937,7 @@ module.exports = class latoken extends Exchange {
     }
 
     async cancelAllOrders (symbol = undefined, params = {}) {
+        // No longer supported by v2
         if (symbol === undefined) {
             throw new ArgumentsRequired (this.id + ' cancelAllOrders requires a symbol argument');
         }
