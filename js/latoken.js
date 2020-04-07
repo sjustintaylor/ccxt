@@ -69,11 +69,11 @@ module.exports = class latoken extends Exchange {
                 'private': {
                     'get': [
                         'auth/account',
+                        'auth/order/pair/{currency}/{quote}/active',
+                        'auth/order/getOrder/{id}',
+                        'auth/trade/pair/{currency}/{quote}',
                         'Account/balances/{currency}',
                         'Order/status',
-                        'Order/active',
-                        'Order/get_order',
-                        'auth/trade/pair/{currency}/{quote}',
                     ],
                     'post': [
                         'Order/new',
@@ -610,8 +610,9 @@ module.exports = class latoken extends Exchange {
     parseOrderStatus (status) {
         const statuses = {
             'active': 'open',
-            'partiallyFilled': 'open',
+            'placed': 'open',
             'filled': 'closed',
+            'closed': 'closed',
             'cancelled': 'canceled',
         };
         return this.safeString (statuses, status, status);
@@ -619,40 +620,28 @@ module.exports = class latoken extends Exchange {
 
     parseOrder (order, market = undefined) {
         //
-        // createOrder
+        //  fetchOrder
+        // {
+        //     "id": "12609cf4-fca5-43ed-b0ea-b40fb48d3b0d",
+        //     "status": "CLOSED",
+        //     "side": "BUY",
+        //     "condition": "GTC",
+        //     "type": "LIMIT",
+        //     "baseCurrency": "3092b810-c39f-47ba-8c5f-a8ca3bd8902c",
+        //     "quoteCurrency": "4092b810-c39f-47ba-8c5f-a8ca3bd0004c",
+        //     "clientOrderId": "myOrder",
+        //     "price": "100.0",
+        //     "quantity": "1000.0",
+        //     "cost": "100000.0",
+        //     "filled": "230.0",
+        //     "trader": "12345678-fca5-43ed-b0ea-b40fb48d3b0d",
+        //     "timestamp": 3800014433
+        //   }
         //
-        //     {
-        //         "orderId":"1563460093.134037.704945@0370:2",
-        //         "cliOrdId":"",
-        //         "pairId":370,
-        //         "symbol":"ETHBTC",
-        //         "side":"sell",
-        //         "orderType":"limit",
-        //         "price":1.0,
-        //         "amount":1.0
-        //     }
-        //
-        // cancelOrder, fetchOrder, fetchOpenOrders, fetchClosedOrders, fetchCanceledOrders
-        //
-        //     {
-        //         "orderId": "1555492358.126073.126767@0502:2",
-        //         "cliOrdId": "myNewOrder",
-        //         "pairId": 502,
-        //         "symbol": "LAETH",
-        //         "side": "buy",
-        //         "orderType": "limit",
-        //         "price": 136.2,
-        //         "amount": 0.57,
-        //         "orderStatus": "partiallyFilled",
-        //         "executedAmount": 0.27,
-        //         "reaminingAmount": 0.3,
-        //         "timeCreated": 155551580736,
-        //         "timeFilled": 0
-        //     }
-        //
-        const id = this.safeString (order, 'orderId');
-        const timestamp = this.safeTimestamp (order, 'timeCreated');
-        const marketId = this.safeString (order, 'symbol');
+        const id = this.safeString (order, 'id');
+        const timestamp = this.safeTimestamp (order, 'timestamp');
+        // Added upstream
+        const marketId = this.safeString (order, 'marketId');
         let symbol = marketId;
         if (marketId in this.markets_by_id) {
             market = this.markets_by_id[marketId];
@@ -661,10 +650,10 @@ module.exports = class latoken extends Exchange {
             symbol = market['symbol'];
         }
         const side = this.safeString (order, 'side');
-        const type = this.safeString (order, 'orderType');
+        const type = this.safeString (order, 'type');
         const price = this.safeFloat (order, 'price');
-        const amount = this.safeFloat (order, 'amount');
-        const filled = this.safeFloat (order, 'executedAmount');
+        const amount = this.safeFloat (order, 'quantity');
+        const filled = this.safeFloat (order, 'filled');
         let remaining = undefined;
         if (amount !== undefined) {
             if (filled !== undefined) {
@@ -678,12 +667,12 @@ module.exports = class latoken extends Exchange {
                 cost = filled * price;
             }
         }
-        const timeFilled = this.safeTimestamp (order, 'timeFilled');
+        const timeFilled = this.safeTimestamp (order, 'timestamp');
         let lastTradeTimestamp = undefined;
         if ((timeFilled !== undefined) && (timeFilled > 0)) {
             lastTradeTimestamp = timeFilled;
         }
-        const clientOrderId = this.safeString (order, 'cliOrdId');
+        const clientOrderId = this.safeString (order, 'clientOrderId');
         return {
             'id': id,
             'clientOrderId': clientOrderId,
@@ -707,7 +696,7 @@ module.exports = class latoken extends Exchange {
     }
 
     async fetchOpenOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
-        return this.fetchOrdersWithMethod ('private_get_order_active', symbol, since, limit, params);
+        return this.fetchOrdersWithMethod ('private_get_auth_order_pair_currency_quote_active', symbol, since, limit, params);
     }
 
     async fetchClosedOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -755,6 +744,22 @@ module.exports = class latoken extends Exchange {
         //             "timeCreated": 155551580736,
         //             "timeFilled": 0
         //         }
+        // {
+        //     "id": "92609cf4-fca5-43ed-b0ea-b40fb48d3b0d",
+        //     "status": "PLACED",
+        //     "side": "SELL",
+        //     "condition": "GTC",
+        //     "type": "LIMIT",
+        //     "baseCurrency": "3092b810-c39f-47ba-8c5f-a8ca3bd8902c",
+        //     "quoteCurrency": "4092b810-c39f-47ba-8c5f-a8ca3bd0004c",
+        //     "clientOrderId": "myOrder",
+        //     "price": "130.12",
+        //     "quantity": "1000.0",
+        //     "cost": "130120.00",
+        //     "filled": "999.1",
+        //     "trader": "12345678-fca5-43ed-b0ea-b40fb48d3b0d",
+        //     "timestamp": 3800012333
+        // },
         //     ]
         //
         return this.parseOrders (response, market, since, limit);
@@ -763,26 +768,31 @@ module.exports = class latoken extends Exchange {
     async fetchOrder (id, symbol = undefined, params = {}) {
         await this.loadMarkets ();
         const request = {
-            'orderId': id,
+            'id': id,
         };
-        const response = await this.privateGetOrderGetOrder (this.extend (request, params));
+        const response = await this.privateGetAuthOrderGetOrderId (this.extend (request, params));
         //
-        //     {
-        //         "orderId": "1555492358.126073.126767@0502:2",
-        //         "cliOrdId": "myNewOrder",
-        //         "pairId": 502,
-        //         "symbol": "LAETH",
-        //         "side": "buy",
-        //         "orderType": "limit",
-        //         "price": 136.2,
-        //         "amount": 0.57,
-        //         "orderStatus": "partiallyFilled",
-        //         "executedAmount": 0.27,
-        //         "reaminingAmount": 0.3,
-        //         "timeCreated": 155551580736,
-        //         "timeFilled": 0
-        //     }
+        // {
+        //     "id": "12609cf4-fca5-43ed-b0ea-b40fb48d3b0d",
+        //     "status": "CLOSED",
+        //     "side": "BUY",
+        //     "condition": "GTC",
+        //     "type": "LIMIT",
+        //     "baseCurrency": "3092b810-c39f-47ba-8c5f-a8ca3bd8902c",
+        //     "quoteCurrency": "4092b810-c39f-47ba-8c5f-a8ca3bd0004c",
+        //     "clientOrderId": "myOrder",
+        //     "price": "100.0",
+        //     "quantity": "1000.0",
+        //     "cost": "100000.0",
+        //     "filled": "230.0",
+        //     "trader": "12345678-fca5-43ed-b0ea-b40fb48d3b0d",
+        //     "timestamp": 3800014433
+        //   }
         //
+        const baseId = await this.getCurrencyCode (response['baseCurrency']);
+        const quoteId = await this.getCurrencyCode (response['quoteCurrency']);
+        const marketId = baseId + '_' + quoteId;
+        response['symbol'] = marketId;
         return this.parseOrder (response);
     }
 
