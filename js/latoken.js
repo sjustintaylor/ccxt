@@ -77,9 +77,7 @@ module.exports = class latoken extends Exchange {
                     ],
                     'post': [
                         'auth/order/place',
-                        'Order/test-order',
-                        'Order/cancel',
-                        'Order/cancel_all',
+                        'auth/order/cancel',
                     ],
                 },
             },
@@ -642,7 +640,7 @@ module.exports = class latoken extends Exchange {
         const timestamp = this.safeTimestamp (order, 'timestamp');
         // Added upstream
         const marketId = this.safeString (order, 'marketId');
-        let symbol = marketId.replace('_','/');
+        let symbol = marketId.replace ('_', '/');
         if (marketId in this.markets_by_id) {
             market = this.markets_by_id[marketId];
         }
@@ -820,10 +818,10 @@ module.exports = class latoken extends Exchange {
             'side': side,
             'condition': 'GTC',
             'baseCurrency': base,
-            'quoteCurrency':quote,
+            'quoteCurrency': quote,
             'price': this.priceToPrecision (symbol, price),
             'quantity': this.amountToPrecision (symbol, amount),
-            'timestamp': this.nonce(),
+            'timestamp': this.nonce (),
         };
         const response = await this.privatePostAuthOrderPlace (this.extend (request, params));
         //
@@ -840,12 +838,12 @@ module.exports = class latoken extends Exchange {
         //   }
         //
         if (response['status'] !== 'SUCCESS') {
-            throw new BadRequest (this.id + ' Exchange responded with: ' + response['error'])
+            throw new BadRequest (this.id + ' Exchange responded with: ' + response['error']);
         } else {
             return {
-                'id': this.safeString(response, 'id'),
-                'timestamp': request.timestamp,
-                'datetime': this.iso8601 (request.timestamp),
+                'id': this.safeString (response, 'id'),
+                'timestamp': request['timestamp'],
+                'datetime': this.iso8601 (request['timestamp']),
                 'lastTradeTimestamp': undefined,
                 'status': 'open',
                 'symbol': symbol,
@@ -859,34 +857,53 @@ module.exports = class latoken extends Exchange {
                 'remaining': amount,
                 'fee': undefined,
                 'trades': undefined,
-            }
+            };
         }
     }
 
     async cancelOrder (id, symbol = undefined, params = {}) {
         await this.loadMarkets ();
         const request = {
-            'orderId': id,
+            'id': id,
         };
-        const response = await this.privatePostOrderCancel (this.extend (request, params));
+        const response = await this.privatePostAuthOrderCancel (this.extend (request, params));
         //
-        //     {
-        //         "orderId": "1555492358.126073.126767@0502:2",
-        //         "cliOrdId": "myNewOrder",
-        //         "pairId": 502,
-        //         "symbol": "LAETH",
-        //         "side": "buy",
-        //         "orderType": "limit",
-        //         "price": 136.2,
-        //         "amount": 0.57,
-        //         "orderStatus": "partiallyFilled",
-        //         "executedAmount": 0.27,
-        //         "reaminingAmount": 0.3,
-        //         "timeCreated": 155551580736,
-        //         "timeFilled": 0
-        //     }
+        // {
+        //     "id": "12345678-1234-1244-1244-123456789012",
+        //     "message": "your request was successfully processed",
+        //     "status": "SUCCESS",
+        //     "error": "",
+        //     "errors": {}
+        //   }
         //
-        return this.parseOrder (response);
+        if (response['status'] !== 'SUCCESS') {
+            throw new BadRequest (this.id + ' Exchange responded with: ' + response['error']);
+        } else {
+            const market = this.market (symbol);
+            const requestTrade = { 'id': response['id'] };
+            const trade = await this.privateGetAuthOrderGetOrderId (this.extend (requestTrade, params));
+            const amount = this.safeFloat (trade, 'quantity');
+            const filled = this.safeFloat (trade, 'filled');
+            const remaining = amount - filled;
+            return {
+                'id': id,
+                'timestamp': this.safeString (trade, 'timestamp'),
+                'datetime': this.iso8601 (this.safeString (trade, 'timestamp')),
+                'lastTradeTimestamp': undefined,
+                'status': this.parseOrderStatus (this.safeString (trade, 'orderStatus')),
+                'symbol': market['symbol'],
+                'type': this.safeString (trade, 'type'),
+                'side': this.safeString (trade, 'side'),
+                'price': this.safeFloat (trade, 'price'),
+                'cost': undefined,
+                'amount': amount,
+                'filled': filled,
+                'average': undefined,
+                'remaining': remaining,
+                'fee': undefined,
+                'trades': undefined,
+            };
+        }
     }
 
     async cancelAllOrders (symbol = undefined, params = {}) {
