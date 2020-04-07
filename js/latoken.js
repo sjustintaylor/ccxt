@@ -76,7 +76,7 @@ module.exports = class latoken extends Exchange {
                         'Order/status',
                     ],
                     'post': [
-                        'Order/new',
+                        'auth/order/place',
                         'Order/test-order',
                         'Order/cancel',
                         'Order/cancel_all',
@@ -642,7 +642,7 @@ module.exports = class latoken extends Exchange {
         const timestamp = this.safeTimestamp (order, 'timestamp');
         // Added upstream
         const marketId = this.safeString (order, 'marketId');
-        let symbol = marketId;
+        let symbol = marketId.replace('_','/');
         if (marketId in this.markets_by_id) {
             market = this.markets_by_id[marketId];
         }
@@ -789,40 +789,78 @@ module.exports = class latoken extends Exchange {
         //     "timestamp": 3800014433
         //   }
         //
-        const baseId = await this.getCurrencyCode (response['baseCurrency']);
-        const quoteId = await this.getCurrencyCode (response['quoteCurrency']);
-        const marketId = baseId + '_' + quoteId;
-        response['symbol'] = marketId;
+        response['marketId'] = this.marketId (symbol);
         return this.parseOrder (response);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
         await this.loadMarkets ();
-        if (type !== 'limit') {
-            throw new ExchangeError (this.id + ' allows limit orders only');
+        if (type !== 'limit' && type !== 'market') {
+            throw new ExchangeError (this.id + ' allows limit or market orders only');
         }
+        //
+        // Payload
+        // {
+        //     "baseCurrency": "f7dac554-8139-4ff6-841f-0e586a5984a0",
+        //     "quoteCurrency": "a5a7a7a9-e2a3-43f9-8754-29a02f6b709b",
+        //     "side": "BID",
+        //     "condition": "GTC",
+        //     "type": "LIMIT",
+        //     "clientOrderId": "my-wonderful-order-number-71566",
+        //     "price": "10103.19",
+        //     "quantity": "3.21",
+        //     "timestamp": 1568185507
+        //   }
+        //
+        const market = this.market (symbol);
+        const base = market['baseId'];
+        const quote = market['quoteId'];
         const request = {
-            'symbol': this.marketId (symbol),
+            'type': type,
             'side': side,
+            'condition': 'GTC',
+            'baseCurrency': base,
+            'quoteCurrency':quote,
             'price': this.priceToPrecision (symbol, price),
-            'amount': this.amountToPrecision (symbol, amount),
-            'orderType': type,
+            'quantity': this.amountToPrecision (symbol, amount),
+            'timestamp': this.nonce(),
         };
-        const method = this.safeString (this.options, 'createOrderMethod', 'private_post_order_new');
-        const response = await this[method] (this.extend (request, params));
+        const response = await this.privatePostAuthOrderPlace (this.extend (request, params));
         //
-        //     {
-        //         "orderId":"1563460093.134037.704945@0370:2",
-        //         "cliOrdId":"",
-        //         "pairId":370,
-        //         "symbol":"ETHBTC",
-        //         "side":"sell",
-        //         "orderType":"limit",
-        //         "price":1.0,
-        //         "amount":1.0
+        // Response
+        // {
+        //     "id": "...",
+        //     "message": "your request was successfully processed",
+        //     "status": "SUCCESS",
+        //     "error": "...",
+        //     "errors": {
+        //       "property1": "...",
+        //       "property2": "..."
         //     }
+        //   }
         //
-        return this.parseOrder (response);
+        if (response['status'] !== 'SUCCESS') {
+            throw new BadRequest (this.id + ' Exchange responded with: ' + response['error'])
+        } else {
+            return {
+                'id': this.safeString(response, 'id'),
+                'timestamp': request.timestamp,
+                'datetime': this.iso8601 (request.timestamp),
+                'lastTradeTimestamp': undefined,
+                'status': 'open',
+                'symbol': symbol,
+                'type': type,
+                'side': side,
+                'price': price,
+                'cost': undefined,
+                'amount': amount,
+                'filled': undefined,
+                'average': undefined,
+                'remaining': amount,
+                'fee': undefined,
+                'trades': undefined,
+            }
+        }
     }
 
     async cancelOrder (id, symbol = undefined, params = {}) {
