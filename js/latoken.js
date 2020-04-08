@@ -57,24 +57,18 @@ module.exports = class latoken extends Exchange {
                         'currency',
                         'marketOverview/orderbook/{market_pair}',
                         'ticker/{base}/{quote}',
+                        'ticker',
                         'marketOverview/ticker',
                         'trade/history/{currency}/{quote}',
-                        'ExchangeInfo/limits',
-                        'ExchangeInfo/pairs/{currency}',
-                        'ExchangeInfo/pair',
-                        'ExchangeInfo/currencies/{symbol}',
-                        'MarketData/orderBook/{symbol}',
-                        'MarketData/trades/{symbol}/{limit}',
                     ],
                 },
                 'private': {
                     'get': [
                         'auth/account',
+                        'auth/trade/pair/{currency}/{quote}',
                         'auth/order/pair/{currency}/{quote}/active',
                         'auth/order/getOrder/{id}',
                         'auth/trade/pair/{currency}/{quote}',
-                        'Account/balances/{currency}',
-                        'Order/status',
                     ],
                     'post': [
                         'auth/order/place',
@@ -387,16 +381,20 @@ module.exports = class latoken extends Exchange {
         //          "lastPrice": "10034.14"
         //      }
         //
-        let symbol = undefined;
-        const marketId = this.safeString (ticker, 'symbol').replace ('/', '_');
-        if (marketId in this.markets_by_id) {
-            market = this.markets_by_id[marketId];
-        }
-        if ((symbol === undefined) && (market !== undefined)) {
-            symbol = market['symbol'];
-        }
+        let symbol = this.safeString(ticker, 'symbol');
+        // const marketId = this.safeString (ticker, 'symbol').replace ('/', '_');
+        // if (marketId in this.markets_by_id) {
+        //     market = this.markets_by_id[marketId];
+        // }
+        // if ((symbol === undefined) && (market !== undefined)) {
+        //     symbol = market['symbol'];
+        // }
         const close = this.safeFloat (ticker, 'lastPrice');
-        const change = close + (close * this.safeFloat (ticker, 'change24h'));
+        let change = 0;
+        const percentageChange = this.safeFloat (ticker, 'change24h');
+        if (percentageChange !== 0) {
+            change = close + (close * percentageChange);
+        }
         const open = close - change;
         const percentage = this.safeFloat (ticker, 'change24h');
         const timestamp = this.nonce ();
@@ -406,9 +404,9 @@ module.exports = class latoken extends Exchange {
             'datetime': this.iso8601 (timestamp),
             'low': undefined,
             'high': undefined,
-            'bid': undefined,
+            'bid': 0,
             'bidVolume': undefined,
-            'ask': undefined,
+            'ask': close,
             'askVolume': undefined,
             'vwap': undefined,
             'open': open,
@@ -450,26 +448,25 @@ module.exports = class latoken extends Exchange {
 
     async fetchTickers (symbols = undefined, params = {}) {
         await this.loadMarkets ();
-        const response = await this.publicGetMarketOverviewTicker (params);
+        const response = await this.publicGetTicker (params);
         //
-        //  {
-        //      "BTC_USDT": {
-        //          "base_id": "1",
-        //          "quote_id": "825",
-        //          "last_price": "10000",
-        //          "quote_volume": "20000",
-        //          "base_volume": "2"
-        //      }
-        //  }
+        //  [
+        // {
+        //     "symbol": "ETH/USDT",
+        //     "baseCurrency": "23fa548b-f887-4f48-9b9b-7dd2c7de5ed0",
+        //     "quoteCurrency": "d721fcf2-cf87-4626-916a-da50548fe5b3",
+        //     "volume24h": "450.29",
+        //     "volume7d": "3410.23",
+        //     "change24h": "-5.2100",
+        //     "change7d": "1.1491",
+        //     "lastPrice": "10034.14"
+        // }
+        //  ]
         //
-        const result = {};
+        const result = [];
         const keys = Object.keys (response);
         for (let i = 0; i < keys.length; i++) {
-            const ticker = await this.fetchTicker (keys[i]);
-            const symbol = ticker['symbol'];
-            if (symbols === undefined || this.inArray (symbol, symbols)) {
-                result[symbol] = ticker;
-            }
+            result.push (this.parseTicker (response[i]));
         }
         return result;
     }
@@ -479,29 +476,18 @@ module.exports = class latoken extends Exchange {
         // fetchTrades (public)
         //
         //     [
-        //      {
-        //          "id": "92609cf4-fca5-43ed-b0ea-b40fb48d3b0d",
-        //          "direction": "TRADE_DIRECTION_BUY",
-        //          "baseCurrency": "6ae140a9-8e75-4413-b157-8dd95c711b23",
-        //          "quoteCurrency": "d721fcf2-cf87-4626-916a-da50548fe5b3",
-        //          "price": "10000.00",
-        //          "quantity": "18.0000",
-        //          "cost": "180000.000",
-        //          "timestamp": 1568396094704,
-        //      }
+        // {
+        //     id: '1d6443bf-0728-4023-b1c5-1fb8f813408b',
+        //     isMakerBuyer: false,
+        //     baseCurrency: '92151d82-df98-4d88-9a4d-284fa9eca49f',
+        //     quoteCurrency: '0c3a106d-bde3-4c13-a26e-3fd2394529e5',
+        //     price: '7181.43',
+        //     quantity: '0.0284',
+        //     cost: '203.952612',
+        //     timestamp: 1586301661310,
+        //     makerBuyer: false
+        //   },
         //     ]
-        //
-        // fetchMyTrades (private)
-        //
-        //     {
-        //         id: '1564223032.892829.3.tg15',
-        //         orderId: '1564223032.671436.707548@1379:1',
-        //         commission: 0,
-        //         side: 'buy',
-        //         price: 0.32874,
-        //         amount: 0.607,
-        //         timestamp: 1564223033 // seconds
-        //     }
         //
         const type = undefined;
         let timestamp = this.safeInteger2 (trade, 'timestamp', 'time');
@@ -512,8 +498,14 @@ module.exports = class latoken extends Exchange {
             }
         }
         const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'amount');
-        const side = this.safeString (trade, 'side');
+        const amount = this.safeFloat (trade, 'quantity');
+        let side = '';
+        const direction = this.safeString (trade, 'makerBuyer');
+        if (direction) {
+            side = 'sell';
+        } else if (!direction) {
+            side = 'buy';
+        }
         let cost = undefined;
         if (amount !== undefined) {
             if (price !== undefined) {
@@ -525,7 +517,6 @@ module.exports = class latoken extends Exchange {
             symbol = market['symbol'];
         }
         const id = this.safeString (trade, 'id');
-        const orderId = this.safeString (trade, 'orderId');
         const feeCost = this.safeFloat (trade, 'commission');
         let fee = undefined;
         if (feeCost !== undefined) {
@@ -540,9 +531,9 @@ module.exports = class latoken extends Exchange {
             'datetime': this.iso8601 (timestamp),
             'symbol': symbol,
             'id': id,
-            'order': orderId,
+            'order': undefined,
             'type': type,
-            'takerOrMaker': undefined,
+            'takerOrMaker': !direction,
             'side': side,
             'price': price,
             'amount': amount,
@@ -564,18 +555,24 @@ module.exports = class latoken extends Exchange {
         const response = await this.publicGetTradeHistoryCurrencyQuote (this.extend (request, params));
         //
         //     [
-        //      {
-        //          "id": "92609cf4-fca5-43ed-b0ea-b40fb48d3b0d",
-        //          "direction": "TRADE_DIRECTION_BUY",
-        //          "baseCurrency": "6ae140a9-8e75-4413-b157-8dd95c711b23",
-        //          "quoteCurrency": "d721fcf2-cf87-4626-916a-da50548fe5b3",
-        //          "price": "10000.00",
-        //          "quantity": "18.0000",
-        //          "cost": "180000.000",
-        //          "timestamp": 1568396094704
-        //      }
+        // {
+        //     id: '1d6443bf-0728-4023-b1c5-1fb8f813408b',
+        //     isMakerBuyer: false,
+        //     baseCurrency: '92151d82-df98-4d88-9a4d-284fa9eca49f',
+        //     quoteCurrency: '0c3a106d-bde3-4c13-a26e-3fd2394529e5',
+        //     price: '7181.43',
+        //     quantity: '0.0284',
+        //     cost: '203.952612',
+        //     timestamp: 1586301661310,
+        //     makerBuyer: false
+        //   },
         //     ]
         //
+        const result = [];
+        const len = Object.keys (response);
+        for (let i = 0; i < len.length; i++) {
+            result.push (this.parseTrade (response[i], market, since, limit));
+        }
         return this.parseTrades (response, market, since, limit);
     }
 
@@ -589,7 +586,7 @@ module.exports = class latoken extends Exchange {
             'currency': market['base'],
             'quote': market['quote'],
         };
-        const response = await this.privateGetAuthTradePair (this.extend (request, params));
+        const response = await this.privateGetAuthTradePairCurrencyQuote (this.extend (request, params));
         //
         //     [
         //      {
@@ -973,10 +970,10 @@ module.exports = class latoken extends Exchange {
 
     sign (path, api = 'public', method = 'GET', params = undefined, headers = undefined, body = undefined) {
         let request = '/' + this.version + '/' + this.implodeParams (path, params);
-        let query = this.omit (params, this.extractParams (path));
-        if (api === 'private') {
-            query = query;
-        }
+        const query = this.omit (params, this.extractParams (path));
+        // if (api === 'private') {
+        //     query = query;
+        // }
         const requestHash = '/' + this.version + '/' + this.implodeParams (path, params);
         const urlencodedQuery = this.urlencode (query);
         if (Object.keys (query).length) {
@@ -984,7 +981,7 @@ module.exports = class latoken extends Exchange {
         }
         if (api === 'private') {
             this.checkRequiredCredentials ();
-            const signature = this.hmac (this.encode (method+requestHash+urlencodedQuery), this.encode (this.secret), 'sha256', 'hex');
+            const signature = this.hmac (this.encode (method + requestHash + urlencodedQuery), this.encode (this.secret), 'sha256', 'hex');
             headers = {
                 'X-LA-APIKEY': this.apiKey,
                 'X-LA-SIGNATURE': signature,
