@@ -23,7 +23,7 @@ module.exports = class latoken extends Exchange {
                 'publicAPI': true,
                 'privateAPI': true,
                 'cancelOrder': true,
-                'cancelAllOrders': true,
+                'cancelAllOrders': false,
                 'createMarketOrder': false,
                 'createOrder': true,
                 'fetchBalance': true,
@@ -32,9 +32,10 @@ module.exports = class latoken extends Exchange {
                 'fetchCurrencies': true,
                 'fetchMyTrades': true,
                 'fetchOpenOrders': true,
-                'fetchOrder': false,
+                'fetchOrder': true,
                 'fetchOrdersByStatus': true,
                 'fetchOrderBook': true,
+                'fetchOrders': true,
                 'fetchTicker': true,
                 'fetchTickers': true,
                 'fetchTime': true,
@@ -67,6 +68,7 @@ module.exports = class latoken extends Exchange {
                         'auth/account',
                         'auth/trade/pair/{currency}/{quote}',
                         'auth/order/pair/{currency}/{quote}/active',
+                        'auth/order/pair/{currency}/{quote}',
                         'auth/order/getOrder/{id}',
                         'auth/trade/pair/{currency}/{quote}',
                     ],
@@ -571,11 +573,11 @@ module.exports = class latoken extends Exchange {
         //   },
         //     ]
         //
-        const result = [];
-        const len = Object.keys (response);
-        for (let i = 0; i < len.length; i++) {
-            result.push (this.parseTrade (response[i], market, since, limit));
-        }
+        // const result = [];
+        // const len = Object.keys (response);
+        // for (let i = 0; i < len.length; i++) {
+        //     result.push (this.parseTrade (response[i], market, since, limit));
+        // }
         return this.parseTrades (response, market, since, limit);
     }
 
@@ -642,13 +644,13 @@ module.exports = class latoken extends Exchange {
         const timestamp = this.safeTimestamp (order, 'timestamp');
         // Added upstream
         const marketId = this.safeString (order, 'marketId');
-        let symbol = marketId.replace ('_', '/');
-        if (marketId in this.markets_by_id) {
-            market = this.markets_by_id[marketId];
-        }
-        if (market !== undefined) {
-            symbol = market['symbol'];
-        }
+        const symbol = marketId.replace ('_', '/');
+        // if (marketId in this.markets_by_id) {
+        //     market = this.markets_by_id[marketId];
+        // }
+        // if (market !== undefined) {
+        //     symbol = market['symbol'];
+        // }
         const side = this.safeString (order, 'side');
         const type = this.safeString (order, 'type');
         const price = this.safeFloat (order, 'price');
@@ -660,7 +662,8 @@ module.exports = class latoken extends Exchange {
                 remaining = amount - filled;
             }
         }
-        const status = this.parseOrderStatus (this.safeString (order, 'orderStatus'));
+        const originalStatus = this.safeString (order, 'status').toLowerCase ();
+        const status = this.parseOrderStatus (originalStatus);
         let cost = undefined;
         if (filled !== undefined) {
             if (price !== undefined) {
@@ -697,7 +700,7 @@ module.exports = class latoken extends Exchange {
 
     async fetchOpenOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
         if (symbol === undefined) {
-            throw new ArgumentsRequired (this.id + ' fetchOrdersWithMethod requires a symbol argument');
+            throw new ArgumentsRequired (this.id + ' fetchOpenOrders requires a symbol argument');
         }
         await this.loadMarkets ();
         const market = this.market (symbol);
@@ -705,7 +708,7 @@ module.exports = class latoken extends Exchange {
             'currency': market['baseId'],
             'quote': market['quoteId'],
         };
-        const response = await this.privateGetAuthOrderPairCurrencyQuoteActive (this.extends (request, params));
+        const response = await this.privateGetAuthOrderPairCurrencyQuoteActive (request, params);
         //
         // [{
         //     "id": "92609cf4-fca5-43ed-b0ea-b40fb48d3b0d",
@@ -725,8 +728,13 @@ module.exports = class latoken extends Exchange {
         // }]
         //
         const marketId = market['base'] + '_' + market['quote'];
-        response['marketId'] = marketId;
-        return this.parseOrders (response, market, since, limit);
+        const results = [];
+        for (let i = 0; i < response.length; i++) {
+            response[i]['marketId'] = marketId;
+            results.push (this.parseOrder (response, market, since, limit));
+        }
+        return results;
+        // return this.parseOrders (response, market, since, limit);
     }
 
     async fetchClosedOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -738,61 +746,32 @@ module.exports = class latoken extends Exchange {
     }
 
     async fetchOrdersByStatus (status, symbol = undefined, since = undefined, limit = undefined, params = {}) {
-        const request = {
-            'status': status,
-        };
-        return this.fetchOrdersWithMethod ('private_get_order_status', symbol, since, limit, this.extend (request, params));
-    }
-
-    async fetchOrdersWithMethod (method, symbol = undefined, since = undefined, limit = undefined, params = {}) {
         if (symbol === undefined) {
-            throw new ArgumentsRequired (this.id + ' fetchOrdersWithMethod requires a symbol argument');
+            throw new ArgumentsRequired (this.id + ' fetchOrdersByStatus requires a symbol argument');
         }
         await this.loadMarkets ();
         const market = this.market (symbol);
         const request = {
-            'symbol': market['id'],
+            'limit': 100,
+            'currency': market['baseId'],
+            'quote': market['quoteId'],
         };
         if (limit !== undefined) {
-            request['limit'] = limit; // default 100
+            request['limit'] = limit;
         }
-        const response = await this[method] (this.extend (request, params));
-        //
-        //     [
-        //         {
-        //             "orderId": "1555492358.126073.126767@0502:2",
-        //             "cliOrdId": "myNewOrder",
-        //             "pairId": 502,
-        //             "symbol": "LAETH",
-        //             "side": "buy",
-        //             "orderType": "limit",
-        //             "price": 136.2,
-        //             "amount": 0.57,
-        //             "orderStatus": "partiallyFilled",
-        //             "executedAmount": 0.27,
-        //             "reaminingAmount": 0.3,
-        //             "timeCreated": 155551580736,
-        //             "timeFilled": 0
-        //         }
-        // {
-        //     "id": "92609cf4-fca5-43ed-b0ea-b40fb48d3b0d",
-        //     "status": "PLACED",
-        //     "side": "SELL",
-        //     "condition": "GTC",
-        //     "type": "LIMIT",
-        //     "baseCurrency": "3092b810-c39f-47ba-8c5f-a8ca3bd8902c",
-        //     "quoteCurrency": "4092b810-c39f-47ba-8c5f-a8ca3bd0004c",
-        //     "clientOrderId": "myOrder",
-        //     "price": "130.12",
-        //     "quantity": "1000.0",
-        //     "cost": "130120.00",
-        //     "filled": "999.1",
-        //     "trader": "12345678-fca5-43ed-b0ea-b40fb48d3b0d",
-        //     "timestamp": 3800012333
-        // },
-        //     ]
-        //
-        return this.parseOrders (response, market, since, limit);
+        const orders = this.privateGetAuthOrderPairCurrencyQuote (request, params);
+        const results = [];
+        const marketId = market['base'] + '_' + market['quote'];
+        const parsedStatus = this.parseOrderStatus (status);
+        for (let i = 0; i < orders.length; i++) {
+            const originalStatus = orders[i]['status'].toLowerCase ();
+            const orderStatus = this.parseOrderStatus (originalStatus);
+            if (orderStatus === parsedStatus) {
+                orders[i]['marketId'] = marketId;
+                results.push (this.parseOrder (orders[i]));
+            }
+        }
+        return results;
     }
 
     async fetchOrder (id, symbol = undefined, params = {}) {
@@ -821,6 +800,30 @@ module.exports = class latoken extends Exchange {
         //
         response['marketId'] = this.marketId (symbol);
         return this.parseOrder (response);
+    }
+
+    async fetchOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
+        if (symbol === undefined) {
+            throw new ArgumentsRequired (this.id + ' fetchOrders requires a symbol argument');
+        }
+        await this.loadMarkets ();
+        const market = this.market (symbol);
+        const request = {
+            'limit': 100,
+            'currency': market['baseId'],
+            'quote': market['quoteId'],
+        };
+        if (limit !== undefined) {
+            request['limit'] = limit;
+        }
+        const orders = this.privateGetAuthOrderPairCurrencyQuote (request, params);
+        const results = [];
+        const marketId = market['base'] + '_' + market['quote'];
+        for (let i = 0; i < orders.length; i++) {
+            orders[i]['marketId'] = marketId;
+            results.push (this.parseOrder (orders[i]));
+        }
+        return results;
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -938,48 +941,12 @@ module.exports = class latoken extends Exchange {
         }
     }
 
-    async cancelAllOrders (symbol = undefined, params = {}) {
-        // No longer supported by v2
-        if (symbol === undefined) {
-            throw new ArgumentsRequired (this.id + ' cancelAllOrders requires a symbol argument');
-        }
-        await this.loadMarkets ();
-        const marketId = this.marketId (symbol);
-        const request = {
-            'symbol': marketId,
-        };
-        const response = await this.privatePostOrderCancelAll (this.extend (request, params));
-        //
-        //     {
-        //         "pairId": 502,
-        //         "symbol": "LAETH",
-        //         "cancelledOrders": [
-        //             "1555492358.126073.126767@0502:2"
-        //         ]
-        //     }
-        //
-        const result = [];
-        const canceledOrders = this.safeValue (response, 'cancelledOrders', []);
-        for (let i = 0; i < canceledOrders.length; i++) {
-            const order = this.parseOrder ({
-                'symbol': marketId,
-                'orderId': canceledOrders[i],
-                'orderStatus': 'canceled',
-            });
-            result.push (order);
-        }
-        return result;
-    }
-
     sign (path, api = 'public', method = 'GET', params = undefined, headers = undefined, body = undefined) {
         let request = '/' + this.version + '/' + this.implodeParams (path, params);
         const query = this.omit (params, this.extractParams (path));
-        // if (api === 'private') {
-        //     query = query;
-        // }
         const requestHash = '/' + this.version + '/' + this.implodeParams (path, params);
         const urlencodedQuery = this.urlencode (query);
-        if (Object.keys (query).length) {
+        if (method === 'GET' && Object.keys (query).length) {
             request += '?' + urlencodedQuery;
         }
         if (api === 'private') {
@@ -990,8 +957,8 @@ module.exports = class latoken extends Exchange {
                 'X-LA-SIGNATURE': signature,
             };
             if (method === 'POST') {
-                headers['Content-Type'] = 'application/x-www-form-urlencoded';
-                body = urlencodedQuery;
+                headers['Content-Type'] = 'application/json';
+                body = this.json (query);
             }
         }
         const url = this.urls['api'] + request;
