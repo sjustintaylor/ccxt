@@ -381,7 +381,7 @@ module.exports = class latoken extends Exchange {
         //          "lastPrice": "10034.14"
         //      }
         //
-        let symbol = this.safeString(ticker, 'symbol');
+        const symbol = this.safeString (ticker, 'symbol');
         // const marketId = this.safeString (ticker, 'symbol').replace ('/', '_');
         // if (marketId in this.markets_by_id) {
         //     market = this.markets_by_id[marketId];
@@ -499,12 +499,15 @@ module.exports = class latoken extends Exchange {
         }
         const price = this.safeFloat (trade, 'price');
         const amount = this.safeFloat (trade, 'quantity');
-        let side = '';
+        let side = undefined;
         const direction = this.safeString (trade, 'makerBuyer');
+        let takerOrMaker = undefined;
         if (direction) {
             side = 'sell';
+            takerOrMaker = 'maker';
         } else if (!direction) {
             side = 'buy';
+            takerOrMaker = 'taker';
         }
         let cost = undefined;
         if (amount !== undefined) {
@@ -533,7 +536,7 @@ module.exports = class latoken extends Exchange {
             'id': id,
             'order': undefined,
             'type': type,
-            'takerOrMaker': !direction,
+            'takerOrMaker': takerOrMaker,
             'side': side,
             'price': price,
             'amount': amount,
