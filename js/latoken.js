@@ -158,11 +158,11 @@ module.exports = class latoken extends Exchange {
             const baseCode = this.getCurrencyCode (baseId, currencies);
             const quoteCode = this.getCurrencyCode (quoteId, currencies);
             const numericId = undefined;
-            const base = this.safeCurrencyCode (baseCode); // Not sure about this
-            const quote = this.safeCurrencyCode (quoteCode);
-            const symbol = base + '/' + quote;
-            const id = base + '_' + quote;
-            const active = (market.status === 'PAIR_STATUS_ACTIVE') ? true : false;
+            // const base = this.safeCurrencyCode (baseCode); // Not sure about this
+            // const quote = this.safeCurrencyCode (quoteCode);
+            const symbol = baseCode + '/' + quoteCode;
+            const id = baseCode + '_' + quoteCode;
+            const active = (market['status'] === 'PAIR_STATUS_ACTIVE') ? true : false;
             const precision = {
                 'price': this.safeInteger (market, 'priceDecimals'),
                 'amount': this.safeInteger (market, 'quantityDecimals'),
@@ -202,7 +202,7 @@ module.exports = class latoken extends Exchange {
         let code = undefined;
         for (let i = 0; i < currencies.length; i++) {
             if (currencies[i]['id'] === currencyId) {
-                code = currencies[i]['tag'];
+                code = this.safeCurrencyCode(currencies[i], 'tag');
                 break;
             }
         }
@@ -234,7 +234,7 @@ module.exports = class latoken extends Exchange {
             const code = this.safeCurrencyCode (id);
             const precision = this.safeInteger (currency, 'decimals');
             const fee = undefined;
-            const active = (currency.status === 'CURRENCY_STATUS_ACTIVE') ? true : false;
+            const active = (currency['status'] === 'CURRENCY_STATUS_ACTIVE') ? true : false;
             result[code] = {
                 'id': id,
                 'numericId': numericId,
