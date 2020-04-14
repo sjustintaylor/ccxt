@@ -186,8 +186,8 @@ module.exports = class latoken extends Exchange {
                 'numericId': numericId,
                 'info': market,
                 'symbol': symbol,
-                'base': base,
-                'quote': quote,
+                'base': baseCode,
+                'quote': quoteCode,
                 'baseId': baseId,
                 'quoteId': quoteId,
                 'active': active, // assuming true
@@ -199,10 +199,11 @@ module.exports = class latoken extends Exchange {
     }
 
     getCurrencyCode (currencyId, currencies) {
-        let code = undefined;
+        let code = '';
         for (let i = 0; i < currencies.length; i++) {
             if (currencies[i]['id'] === currencyId) {
-                code = this.safeCurrencyCode(currencies[i], 'tag');
+                const currencyId = currencies[i]['tag'];
+                code = this.safeCurrencyCode (currencyId);
                 break;
             }
         }
@@ -371,7 +372,7 @@ module.exports = class latoken extends Exchange {
         return this.parseOrderBook (newResponse, timestamp, 'bids', 'asks', 'price', 'quantity');
     }
 
-    parseTicker (ticker, market = undefined) {
+    parseTicker (symbol, ticker, market = undefined) {
         //      {
         //          "symbol": "ETH/USDT",
         //          "baseCurrency": "23fa548b-f887-4f48-9b9b-7dd2c7de5ed0",
@@ -383,22 +384,16 @@ module.exports = class latoken extends Exchange {
         //          "lastPrice": "10034.14"
         //      }
         //
-        const symbol = this.safeString (ticker, 'symbol');
-        // const marketId = this.safeString (ticker, 'symbol').replace ('/', '_');
-        // if (marketId in this.markets_by_id) {
-        //     market = this.markets_by_id[marketId];
-        // }
-        // if ((symbol === undefined) && (market !== undefined)) {
-        //     symbol = market['symbol'];
-        // }
-        const close = this.safeFloat (ticker, 'lastPrice');
+        let close = this.safeFloat (ticker, 'lastPrice');
+        if (!close) {
+            close = 0;
+        }
         let change = 0;
-        const percentageChange = this.safeFloat (ticker, 'change24h');
+        let percentageChange = this.safeFloat (ticker, 'change24h');
         if (percentageChange !== 0) {
             change = close + (close * percentageChange);
         }
-        const open = close - change;
-        const percentage = this.safeFloat (ticker, 'change24h');
+        percentageChange = percentageChange ? percentageChange : 0;
         const timestamp = this.nonce ();
         return {
             'symbol': symbol,
@@ -411,12 +406,12 @@ module.exports = class latoken extends Exchange {
             'ask': close,
             'askVolume': undefined,
             'vwap': undefined,
-            'open': open,
+            'open': undefined,
             'close': close,
             'last': close,
             'previousClose': undefined,
             'change': change,
-            'percentage': percentage,
+            'percentage': percentageChange,
             'average': undefined,
             'baseVolume': undefined,
             'quoteVolume': this.safeFloat (ticker, 'volume24h'),
@@ -427,25 +422,13 @@ module.exports = class latoken extends Exchange {
     async fetchTicker (symbol, params = {}) {
         await this.loadMarkets ();
         const market = this.market (symbol);
-        const id = market['id'].split ('_');
+        // const id = market['id'].split ('_');
         const request = {
-            'base': id[0],
-            'quote': id[1],
+            'base': 'BTC',
+            'quote': 'USDT',
         };
         const response = await this.publicGetTickerBaseQuote (this.extend (request, params));
-        //
-        //      {
-        //          "symbol": "ETH/USDT",
-        //          "baseCurrency": "23fa548b-f887-4f48-9b9b-7dd2c7de5ed0",
-        //          "quoteCurrency": "d721fcf2-cf87-4626-916a-da50548fe5b3",
-        //          "volume24h": "450.29",
-        //          "volume7d": "3410.23",
-        //          "change24h": "-5.2100",
-        //          "change7d": "1.1491",
-        //          "lastPrice": "10034.14"
-        //      }
-        //
-        return this.parseTicker (response, market);
+        return this.parseTicker (symbol, response, market);
     }
 
     async fetchTickers (symbols = undefined, params = {}) {

@@ -14,3 +14,5 @@ services:
     entrypoint: /bin/bash
     stdin_open: true
     tty: true
+    environment:
+        LANG: 'C.UTF-8' # Stops python ascii decode errors when a unicode character is encountered
