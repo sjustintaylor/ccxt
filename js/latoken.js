@@ -355,21 +355,21 @@ module.exports = class latoken extends Exchange {
         //     "timestamp": "1566359163123"
         // }
         //
-        const timestamp = this.safeString (response, 'timestamp');
+        const timestamp = this.iso8601 (response['timestamp']);
         const bids = [];
         const asks = [];
         for (let i = 0; i < response['bids'].length; i++) {
-            bids.push ({ 'price': response['bids'][i][0], 'quantity': response['bids'][i][1] });
+            bids.push ([ response['bids'][i][0], response['bids'][i][1] ]);
         }
         for (let i = 0; i < response['asks'].length; i++) {
-            asks.push ({ 'price': response['asks'][i][0], 'quantity': response['asks'][i][1] });
+            asks.push ([ response['asks'][i][0], response['asks'][i][1] ]);
         }
         const newResponse = {
-            bids,
-            asks,
-            timestamp,
+            'bids': bids,
+            'asks': asks,
+            'timestamp': timestamp,
         };
-        return this.parseOrderBook (newResponse, timestamp, 'bids', 'asks', 'price', 'quantity');
+        return this.parseOrderBook (newResponse, timestamp, 'bids', 'asks');
     }
 
     parseTicker (symbol, ticker, market = undefined) {
@@ -422,10 +422,11 @@ module.exports = class latoken extends Exchange {
     async fetchTicker (symbol, params = {}) {
         await this.loadMarkets ();
         const market = this.market (symbol);
-        // const id = market['id'].split ('_');
+        const marketID = market['id'];
+        const id = marketID.split ('_');
         const request = {
-            'base': 'BTC',
-            'quote': 'USDT',
+            'base': id[0],
+            'quote': id[1],
         };
         const response = await this.publicGetTickerBaseQuote (this.extend (request, params));
         return this.parseTicker (symbol, response, market);
@@ -448,10 +449,11 @@ module.exports = class latoken extends Exchange {
         // }
         //  ]
         //
-        const result = [];
-        const keys = Object.keys (response);
-        for (let i = 0; i < keys.length; i++) {
-            result.push (this.parseTicker (response[i]));
+        const result = {};
+        for (let i = 0; i < response.length; i++) {
+            const symbol = response[i]['symbol'];
+            const ticker = this.parseTicker (symbol, response[i]);
+            result[symbol] = ticker;
         }
         return result;
     }
